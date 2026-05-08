@@ -14,6 +14,7 @@ import io
 import re
 import time
 import signal
+import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
@@ -161,6 +162,26 @@ def hava_durumu_sorgula(sehir):
         return f"{sehir} bugün {min_s} ile {max_s} derece arasında, durum: {veri['forecast']['forecastday'][0]['day']['condition']['text']}."
     except Exception: return "Hava durumu servisi yanıt vermiyor."
 
+def guncel_haberleri_getir():
+    print(f"\n[Araç] Güncel haberler çekiliyor...", flush=True)
+    try:
+        url = "https://news.google.com/rss?hl=tr&gl=TR&ceid=TR:tr"
+        cevap = requests.get(url)
+        if cevap.status_code != 200: return "Haberlere erişilemedi."
+
+        root = ET.fromstring(cevap.content)
+        haberler = []
+        for item in root.findall('./channel/item')[:5]:
+            title = item.find('title').text
+            haberler.append(title)
+
+        if not haberler: return "Şu an için güncel haber bulunamadı."
+
+        return "Güncel Haberler:\n" + "\n".join(f"- {h}" for h in haberler)
+    except Exception as e:
+        print(f"[Araç Hatası] Haber servisi reddetti: {str(e)}", flush=True)
+        return "Haber servisi yanıt vermiyor."
+
 def muzik_cal(sarki_adi):
     print(f"\n[Araç] Şarkı aranıyor: {sarki_adi}", flush=True)
     try:
@@ -230,6 +251,7 @@ groq_araclar = [
     },
     {"type": "function", "function": {"name": "takvim_listele", "description": "Yaklaşan takvim etkinliklerini söyler."}},
     {"type": "function", "function": {"name": "hava_durumu_sorgula", "description": "Hava durumu bilgisi.", "parameters": {"type": "object", "properties": {"sehir": {"type": "string", "description": "Sadece tek bir yalın ŞEHİR adı"}}, "required": ["sehir"]}}},
+    {"type": "function", "function": {"name": "guncel_haberleri_getir", "description": "Türkiye'deki en güncel başlıkları ve haberleri getirir."}},
     {"type": "function", "function": {"name": "muzik_cal", "description": "Müzik açar.", "parameters": {"type": "object", "properties": {"sarki_adi": {"type": "string"}}, "required": ["sarki_adi"]}}},
     {"type": "function", "function": {"name": "muzik_kontrol", "description": "Müzik ses ve durum ayarı.", "parameters": {"type": "object", "properties": {"komut": {"type": "string", "enum": ["durdur", "devam", "kapat", "sesi_arttir", "sesi_azalt", "sesi_ayarla"]}, "seviye": {"type": "integer"}}, "required": ["komut"]}}}
 ]
@@ -255,6 +277,7 @@ def yapay_zekaya_sor_akisli(kullanici_metni):
                 elif fonksiyon_adi == "muzik_cal": sonuc = muzik_cal(**parametreler)
                 elif fonksiyon_adi == "muzik_kontrol": sonuc = muzik_kontrol(**parametreler)
                 elif fonksiyon_adi == "takvim_listele": sonuc = takvim_listele()
+                elif fonksiyon_adi == "guncel_haberleri_getir": sonuc = guncel_haberleri_getir()
                 else: sonuc = "Bilinmeyen araç."
                 mesaj_gecmisi.append({"tool_call_id": arac.id, "role": "tool", "name": fonksiyon_adi, "content": sonuc})
 
@@ -360,9 +383,7 @@ def dinle():
                 response_format="text",
                 temperature=0.0
             )
-            sonuc = ceviri_sonucu.strip().lower()
-            sonuc = sonuc.replace("istikal", "istanbul").replace("istiklal", "istanbul")
-            return sonuc
+            return ceviri_sonucu.strip().lower()
         except: return ""
 
 # --- ANA DÖNGÜ ---
