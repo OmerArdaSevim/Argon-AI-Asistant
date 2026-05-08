@@ -81,8 +81,8 @@ def bellegi_temizle():
 
     sistem_mesaji = f"""
     Sen profesyonel, zeki ve yetenekli bir yapay zeka asistanısın. Adın Argon. Şu anki zaman: {su_an}.
-    - İLETİŞİM TARZI: Sadece "evet/hayır" veya "açtım/kapattım" gibi aşırı robotik cevaplar verme. Yanıtların doğal, akıcı ve insansı olsun ancak gereksiz yere lafı da uzatma. Öz ve tatmin edici konuş.
-    - Araçlar (tools) bir işlem yaptığında veya hata verdiğinde, durumu doğal bir asistan gibi kullanıcıya bildir.
+    - İLETİŞİM TARZI: Yanıtların her zaman çok kısa, öz ve doğrudan olsun. Gereksiz detaylardan kaçın. Hava durumu veya saat sorulduğunda sadece cevabı ver, uzatma.
+    - Araçlar (tools) bir işlem yaptığında durumu tek ve kısa bir cümleyle bildir (Örn: "Takvime ekledim", "Müziği açtım").
     - Takvim etkinlikleri için saat belirtilmemişse varsayılan olarak saat 09:00:00'ı kullan.
 
     [ÖZEL PROTOKOL: DNA ANALİZİ VE ÖNERİ SİSTEMİ]
@@ -360,7 +360,9 @@ def dinle():
                 response_format="text",
                 temperature=0.0
             )
-            return ceviri_sonucu.strip().lower()
+            sonuc = ceviri_sonucu.strip().lower()
+            sonuc = sonuc.replace("istikal", "istanbul").replace("istiklal", "istanbul")
+            return sonuc
         except: return ""
 
 # --- ANA DÖNGÜ ---
