@@ -14,6 +14,7 @@ import io
 import re
 import time
 import signal
+import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
@@ -81,8 +82,8 @@ def bellegi_temizle():
 
     sistem_mesaji = f"""
     Sen profesyonel, zeki ve yetenekli bir yapay zeka asistanısın. Adın Argon. Şu anki zaman: {su_an}.
-    - İLETİŞİM TARZI: Sadece "evet/hayır" veya "açtım/kapattım" gibi aşırı robotik cevaplar verme. Yanıtların doğal, akıcı ve insansı olsun ancak gereksiz yere lafı da uzatma. Öz ve tatmin edici konuş.
-    - Araçlar (tools) bir işlem yaptığında veya hata verdiğinde, durumu doğal bir asistan gibi kullanıcıya bildir.
+    - İLETİŞİM TARZI: Yanıtların her zaman çok kısa, öz ve doğrudan olsun. Gereksiz detaylardan kaçın. Hava durumu veya saat sorulduğunda sadece cevabı ver, uzatma.
+    - Araçlar (tools) bir işlem yaptığında durumu tek ve kısa bir cümleyle bildir (Örn: "Takvime ekledim", "Müziği açtım").
     - Takvim etkinlikleri için saat belirtilmemişse varsayılan olarak saat 09:00:00'ı kullan.
 
     [ÖZEL PROTOKOL: DNA ANALİZİ VE ÖNERİ SİSTEMİ]
@@ -161,6 +162,26 @@ def hava_durumu_sorgula(sehir):
         return f"{sehir} bugün {min_s} ile {max_s} derece arasında, durum: {veri['forecast']['forecastday'][0]['day']['condition']['text']}."
     except Exception: return "Hava durumu servisi yanıt vermiyor."
 
+def guncel_haberleri_getir():
+    print(f"\n[Araç] Güncel haberler çekiliyor...", flush=True)
+    try:
+        url = "https://news.google.com/rss?hl=tr&gl=TR&ceid=TR:tr"
+        cevap = requests.get(url)
+        if cevap.status_code != 200: return "Haberlere erişilemedi."
+
+        root = ET.fromstring(cevap.content)
+        haberler = []
+        for item in root.findall('./channel/item')[:5]:
+            title = item.find('title').text
+            haberler.append(title)
+
+        if not haberler: return "Şu an için güncel haber bulunamadı."
+
+        return "Güncel Haberler:\n" + "\n".join(f"- {h}" for h in haberler)
+    except Exception as e:
+        print(f"[Araç Hatası] Haber servisi reddetti: {str(e)}", flush=True)
+        return "Haber servisi yanıt vermiyor."
+
 def muzik_cal(sarki_adi):
     print(f"\n[Araç] Şarkı aranıyor: {sarki_adi}", flush=True)
     try:
@@ -230,6 +251,7 @@ groq_araclar = [
     },
     {"type": "function", "function": {"name": "takvim_listele", "description": "Yaklaşan takvim etkinliklerini söyler."}},
     {"type": "function", "function": {"name": "hava_durumu_sorgula", "description": "Hava durumu bilgisi.", "parameters": {"type": "object", "properties": {"sehir": {"type": "string", "description": "Sadece tek bir yalın ŞEHİR adı"}}, "required": ["sehir"]}}},
+    {"type": "function", "function": {"name": "guncel_haberleri_getir", "description": "Türkiye'deki en güncel başlıkları ve haberleri getirir."}},
     {"type": "function", "function": {"name": "muzik_cal", "description": "Müzik açar.", "parameters": {"type": "object", "properties": {"sarki_adi": {"type": "string"}}, "required": ["sarki_adi"]}}},
     {"type": "function", "function": {"name": "muzik_kontrol", "description": "Müzik ses ve durum ayarı.", "parameters": {"type": "object", "properties": {"komut": {"type": "string", "enum": ["durdur", "devam", "kapat", "sesi_arttir", "sesi_azalt", "sesi_ayarla"]}, "seviye": {"type": "integer"}}, "required": ["komut"]}}}
 ]
@@ -255,6 +277,7 @@ def yapay_zekaya_sor_akisli(kullanici_metni):
                 elif fonksiyon_adi == "muzik_cal": sonuc = muzik_cal(**parametreler)
                 elif fonksiyon_adi == "muzik_kontrol": sonuc = muzik_kontrol(**parametreler)
                 elif fonksiyon_adi == "takvim_listele": sonuc = takvim_listele()
+                elif fonksiyon_adi == "guncel_haberleri_getir": sonuc = guncel_haberleri_getir()
                 else: sonuc = "Bilinmeyen araç."
                 mesaj_gecmisi.append({"tool_call_id": arac.id, "role": "tool", "name": fonksiyon_adi, "content": sonuc})
 
@@ -302,8 +325,14 @@ def ses_calma_iscisi():
 
 threading.Thread(target=ses_calma_iscisi, daemon=True).start()
 
+def metni_temizle(metin):
+    # Markdown formatlarını ve gereksiz özel karakterleri temizler
+    metin = re.sub(r'[*_~`#]', '', metin)
+    return metin
+
 def argonu_konustur(metin):
-    for parca in re.split(r'(?<=[.!?]) +', metin):
+    metin = metni_temizle(metin)
+    for parca in re.split(r'(?<=[.!?])\s+', metin):
         if parca.strip(): ses_kuyrugu.put(parca.strip())
 
 def argonun_susmasini_bekle():
@@ -314,8 +343,9 @@ def argonun_susmasini_bekle():
 def uyanma_bekle():
     r = sr.Recognizer()
     with sr.Microphone() as source:
-        r.dynamic_energy_threshold = False
-        r.energy_threshold = 600
+        r.adjust_for_ambient_noise(source, duration=1)
+        r.dynamic_energy_threshold = True
+        r.energy_threshold = 300
 
         print("\n[Uyku Modu] Bekleniyor ('Argon' seslen veya klavyeden yaz)...", flush=True)
 
@@ -327,7 +357,9 @@ def uyanma_bekle():
                 ses = r.listen(source, timeout=1, phrase_time_limit=3)
                 metin = r.recognize_google(ses, language="tr-TR").lower()
 
-                if any(k in metin for k in ["argon", "argan", "ergon"]):
+                # print(f"[Uyku Modu Duyulan]: {metin}", flush=True)
+
+                if any(k in metin for k in ["argon", "argan", "ergon", "algon", "arkın", "erhan", "argo", "argun", "arkon", "argın", "ardon"]):
                     muzik_sesini_ayarla(15)
                     return True
             except: pass
@@ -335,8 +367,9 @@ def uyanma_bekle():
 def dinle():
     r = sr.Recognizer()
     with sr.Microphone() as source:
-        r.dynamic_energy_threshold = False
-        r.energy_threshold = 600
+        r.adjust_for_ambient_noise(source, duration=1)
+        r.dynamic_energy_threshold = True
+        r.energy_threshold = 300
         r.pause_threshold = 0.6
         print("\n[Aktif] Seni dinliyorum...", flush=True)
         try:
