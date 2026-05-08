@@ -302,8 +302,14 @@ def ses_calma_iscisi():
 
 threading.Thread(target=ses_calma_iscisi, daemon=True).start()
 
+def metni_temizle(metin):
+    # Markdown formatlarını ve gereksiz özel karakterleri temizler
+    metin = re.sub(r'[*_~`#]', '', metin)
+    return metin
+
 def argonu_konustur(metin):
-    for parca in re.split(r'(?<=[.!?]) +', metin):
+    metin = metni_temizle(metin)
+    for parca in re.split(r'(?<=[.!?])\s+', metin):
         if parca.strip(): ses_kuyrugu.put(parca.strip())
 
 def argonun_susmasini_bekle():
@@ -314,8 +320,9 @@ def argonun_susmasini_bekle():
 def uyanma_bekle():
     r = sr.Recognizer()
     with sr.Microphone() as source:
-        r.dynamic_energy_threshold = False
-        r.energy_threshold = 600
+        r.adjust_for_ambient_noise(source, duration=1)
+        r.dynamic_energy_threshold = True
+        r.energy_threshold = 300
 
         print("\n[Uyku Modu] Bekleniyor ('Argon' seslen veya klavyeden yaz)...", flush=True)
 
@@ -327,7 +334,9 @@ def uyanma_bekle():
                 ses = r.listen(source, timeout=1, phrase_time_limit=3)
                 metin = r.recognize_google(ses, language="tr-TR").lower()
 
-                if any(k in metin for k in ["argon", "argan", "ergon"]):
+                # print(f"[Uyku Modu Duyulan]: {metin}", flush=True)
+
+                if any(k in metin for k in ["argon", "argan", "ergon", "algon", "arkın", "erhan", "argo", "argun", "arkon", "argın", "ardon"]):
                     muzik_sesini_ayarla(15)
                     return True
             except: pass
@@ -335,8 +344,9 @@ def uyanma_bekle():
 def dinle():
     r = sr.Recognizer()
     with sr.Microphone() as source:
-        r.dynamic_energy_threshold = False
-        r.energy_threshold = 600
+        r.adjust_for_ambient_noise(source, duration=1)
+        r.dynamic_energy_threshold = True
+        r.energy_threshold = 300
         r.pause_threshold = 0.6
         print("\n[Aktif] Seni dinliyorum...", flush=True)
         try:
